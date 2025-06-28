@@ -9,6 +9,8 @@ using UnityEngine;
 
 public class UDPClientHandler : MonoBehaviour
 {
+    public static UDPClientHandler Instance { get; private set; }
+
     private UdpClient udpClient;
     private Thread receiveThread;
     private int portRx;
@@ -16,6 +18,8 @@ public class UDPClientHandler : MonoBehaviour
     private string server;
     private string latestJsonData;
     private readonly object lockObj = new();
+
+    private bool isRunning = false;
 
     public string LatestJson
     {
@@ -28,8 +32,23 @@ public class UDPClientHandler : MonoBehaviour
         }
     }
 
+    void Awake()
+    {
+        if (Instance == null)
+        {
+            Instance = this;
+            DontDestroyOnLoad(gameObject);
+        }
+        else
+        {
+            Destroy(gameObject);
+        }
+    }
+
     public void Init(string serverIP, int sendPort, int receivePort)
     {
+        if (isRunning) return;
+
         server = serverIP;
         portTx = sendPort;
         portRx = receivePort;
@@ -37,6 +56,7 @@ public class UDPClientHandler : MonoBehaviour
         udpClient = new UdpClient(portRx);
         udpClient.Connect(server, portTx);
 
+        isRunning = true;
         receiveThread = new Thread(ReceiveData);
         receiveThread.IsBackground = true;
         receiveThread.Start();
@@ -45,13 +65,12 @@ public class UDPClientHandler : MonoBehaviour
     public void RequestMode(string mode)
     {
         string json = $"{{\"mode\": \"{mode}\"}}";
-        byte[] data = Encoding.UTF8.GetBytes(json);
         byte[] jsonBytes = Encoding.UTF8.GetBytes(json);
         byte[] compressedData = CompressGzip(jsonBytes);
-        udpClient.Send(compressedData, compressedData.Length);
+
         try
         {
-            udpClient.Send(data, data.Length);
+            udpClient.Send(compressedData, compressedData.Length);
         }
         catch (Exception e)
         {
@@ -62,7 +81,7 @@ public class UDPClientHandler : MonoBehaviour
     private void ReceiveData()
     {
         IPEndPoint remoteEP = new IPEndPoint(IPAddress.Any, portRx);
-        while (true)
+        while (isRunning)
         {
             try
             {
@@ -72,8 +91,6 @@ public class UDPClientHandler : MonoBehaviour
                 lock (lockObj)
                 {
                     latestJsonData = decompressedJson;
-                    // Optionally log
-                    // Debug.Log("Received: " + decompressedJson);
                 }
             }
             catch (SocketException se)
@@ -81,7 +98,7 @@ public class UDPClientHandler : MonoBehaviour
                 if (se.SocketErrorCode != SocketError.Interrupted)
                     Debug.LogWarning("UDP socket error: " + se.Message);
                 else
-                    break; // graceful shutdown
+                    break;
             }
             catch (Exception ex)
             {
@@ -131,9 +148,11 @@ public class UDPClientHandler : MonoBehaviour
 
     public void Close()
     {
+        isRunning = false;
+
         try
         {
-            receiveThread?.Abort(); // okay here for background thread
+            receiveThread?.Join(100); // Let the thread finish cleanly
         }
         catch (Exception) { }
 

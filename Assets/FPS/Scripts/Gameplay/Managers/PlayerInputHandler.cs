@@ -38,6 +38,8 @@ namespace Unity.FPS.Gameplay
         private InputAction m_ReloadAction;
         private InputAction m_NextWeaponAction;
 
+        string json = PlayerDataHolder.latestJson;
+
         void Start()
         {
             m_PlayerCharacterController = GetComponent<PlayerCharacterController>();
