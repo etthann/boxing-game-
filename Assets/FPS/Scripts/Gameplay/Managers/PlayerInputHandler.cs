@@ -1,4 +1,5 @@
-﻿using Unity.FPS.Game;
+﻿using NUnit.Framework.Internal;
+using Unity.FPS.Game;
 using UnityEngine;
 using UnityEngine.InputSystem;
 
@@ -37,8 +38,16 @@ namespace Unity.FPS.Gameplay
         private InputAction m_CrouchAction;
         private InputAction m_ReloadAction;
         private InputAction m_NextWeaponAction;
+        private string poseJson => PlayerDataHolder.latestJson;
+        private string calibratedJson = CalibrationDataHolder.CalibrationData;
 
-        string json = PlayerDataHolder.latestJson;
+        private PoseController poseController;
+        
+        private Vector3 leftShoulder, rightShoulder, leftCalibratedShoulder, rightCalibratedShoulder;
+
+        private string movement;
+
+
 
         void Start()
         {
@@ -47,6 +56,8 @@ namespace Unity.FPS.Gameplay
                 m_PlayerCharacterController, this, gameObject);
             m_GameFlowManager = FindFirstObjectByType<GameFlowManager>();
             DebugUtility.HandleErrorIfNullFindObject<GameFlowManager, PlayerInputHandler>(m_GameFlowManager, this);
+
+            poseController = new PoseController();
 
             Cursor.lockState = CursorLockMode.Locked;
             Cursor.visible = false;
@@ -60,7 +71,7 @@ namespace Unity.FPS.Gameplay
             m_CrouchAction = InputSystem.actions.FindAction("Player/Crouch");
             m_ReloadAction = InputSystem.actions.FindAction("Player/Reload");
             m_NextWeaponAction = InputSystem.actions.FindAction("Player/NextWeapon");
-            
+
             m_MoveAction.Enable();
             m_LookAction.Enable();
             m_JumpAction.Enable();
@@ -70,12 +81,50 @@ namespace Unity.FPS.Gameplay
             m_CrouchAction.Enable();
             m_ReloadAction.Enable();
             m_NextWeaponAction.Enable();
+
+            Debug.Log($"Calibration JSON: {calibratedJson}");
+            leftCalibratedShoulder = poseController.GetLeftCalibratedShoulder();
+            rightCalibratedShoulder = poseController.GetRightCalibratedShoulder();
+
+
         }
 
-        void LateUpdate()
+        void Update()
         {
-            m_FireInputWasHeld = GetFireInputHeld();
+            // calculate difference between calibration shoulder to live shoulder
+            if (poseController == null)
+            {
+                Debug.LogError("PoseController is not initialized.");
+                return;
+            }
+            poseController.GetShoulder();
+            leftShoulder = poseController.GetLeftShoulder();
+            rightShoulder = poseController.GetRightShoulder();
+
+
+            // Calculate shoulder offsets relative to calibration (zero point)
+            Vector3 leftShoulderOffset = leftShoulder - leftCalibratedShoulder;
+            Vector3 rightShoulderOffset = rightShoulder - rightCalibratedShoulder;
+
+            // Determine leaning direction based on vertical (y) offset
+            float leftLean = leftShoulderOffset.y;
+            float rightLean = rightShoulderOffset.y;
+            if (leftLean > rightLean && leftLean > 0.9f) // Added a threshold to avoid noise
+            {
+                movement = "left";
+            }
+            else if (rightLean > leftLean && rightLean > 0.9f) // Added a threshold to avoid noise
+            {
+                movement = "right";
+            }
+            else
+            {
+                movement = "idle";
+            }
+            // Debug.Log(poseJson);
+            // Debug.Log($"Pose JSON: {poseJson}");
         }
+
 
         public bool CanProcessInput()
         {
@@ -86,13 +135,33 @@ namespace Unity.FPS.Gameplay
         {
             if (CanProcessInput())
             {
-                var input = m_MoveAction.ReadValue<Vector2>();
-                Vector3 move = new Vector3(input.x, 0f, input.y);
 
-                // constrain move input to a maximum magnitude of 1, otherwise diagonal movement might exceed the max move speed defined
-                move = Vector3.ClampMagnitude(move, 1);
+                // var input = m_MoveAction.ReadValue<Vector2>();
 
-                return move;
+                if (movement == "left")
+                {
+                    // Leaning left
+                    Vector3 leftShoulderOffset = leftShoulder - leftCalibratedShoulder;
+                    float leftLean = leftShoulderOffset.y;
+                    Debug.Log($"Leaning left: {leftLean}");
+                    return new Vector3(-1f, 0f, 0f); // Move left
+                }
+                else if (movement == "right")
+                {
+                    // Leaning right
+                    Vector3 rightShoulderOffset = rightShoulder - rightCalibratedShoulder;
+                    float rightLean = rightShoulderOffset.y;
+                    Debug.Log($"Leaning right: {rightLean}");
+                    return new Vector3(1f, 0f, 0f); // Move right
+                }
+                else
+                {
+                    // Standing straight or idle
+                    Debug.Log("Standing straight");
+                }
+
+
+                return Vector3.zero; // No movement input
             }
 
             return Vector3.zero;
@@ -102,14 +171,14 @@ namespace Unity.FPS.Gameplay
         {
             if (!CanProcessInput() || IsCameraLocked)
                 return 0.0f;
-            
+
             float input = m_LookAction.ReadValue<Vector2>().x;
 
             if (InvertXAxis)
                 input *= -1;
 
             input *= LookSensitivity;
-            
+
 #if UNITY_WEBGL
             // Mouse tends to be even more sensitive in WebGL due to mouse acceleration, so reduce it even more
             input *= WebglLookSensitivityMultiplier;
@@ -122,14 +191,14 @@ namespace Unity.FPS.Gameplay
         {
             if (!CanProcessInput() || IsCameraLocked)
                 return 0.0f;
-            
+
             float input = m_LookAction.ReadValue<Vector2>().y;
 
             if (InvertYAxis)
                 input *= -1;
 
             input *= LookSensitivity;
-            
+
 #if UNITY_WEBGL
             // Mouse tends to be even more sensitive in WebGL due to mouse acceleration, so reduce it even more
             input *= WebglLookSensitivityMultiplier;
@@ -236,7 +305,7 @@ namespace Unity.FPS.Gameplay
 
                 if (input > 0f)
                     return -1;
-                
+
                 if (input < 0f)
                     return 1;
             }

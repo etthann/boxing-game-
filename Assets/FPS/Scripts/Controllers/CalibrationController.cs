@@ -126,7 +126,7 @@ public class CalibrationController : MonoBehaviour
 
                 if (!string.IsNullOrEmpty(json))
                 {
-                    Debug.Log("📨 Raw received data: " + json);
+                    // Debug.Log("📨 Raw received data: " + json);
 
                     try
                     {

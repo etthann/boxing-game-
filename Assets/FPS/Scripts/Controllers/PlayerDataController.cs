@@ -1,4 +1,5 @@
 using UnityEngine;
+using Unity.FPS.Gameplay;
 
 public class PlayerDataController : MonoBehaviour
 {
@@ -15,7 +16,7 @@ public class PlayerDataController : MonoBehaviour
         {
             PlayerDataHolder.latestJson = UDPClientHandler.Instance.LatestJson;
             // Uncomment the next line if you want to see the raw data
-            Debug.Log(UDPClientHandler.Instance.LatestJson);
+            // Debug.Log(UDPClientHandler.Instance.LatestJson);
         }
     }
 
